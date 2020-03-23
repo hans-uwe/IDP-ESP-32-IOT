@@ -1,36 +1,51 @@
-#include <math.h>
-#include "WiFi.h"
+/* ESP32 AWS IoT
+ *  
+ * Simplest possible example (that I could come up with) of using an ESP32 with AWS IoT.
+ *  
+ * Author: Anthony Elder 
+ * License: Apache License v2
+ */
 #include <WiFiClientSecure.h>
-#include <MQTTClient.h>
-#include <ArduinoJson.h>
+#include <PubSubClient.h> // install with Library Manager, I used v2.6.0
 
-#ifndef certs_h
-#define certs_h
+const char* ssid = "FRITZ!Box 6360 Cable";
+const char* password = "7139310897929510";
 
-// Amazon's root CA. This should be the same for everyone.
-const char AWS_CERT_CA[] = "-----BEGIN CERTIFICATE-----\n" \
-"MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF\n" \
-"ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6\n" \
-"b24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTEL\n" \
-"MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv\n" \
-"b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj\n" \
-"ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM\n" \
-"9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw\n" \
-"IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6\n" \
-"VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L\n" \
-"93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm\n" \
-"jgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC\n" \
-"AYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUA\n" \
-"A4IBAQCY8jdaQZChGsV2USggNiMOruYou6r4lK5IpDB/G/wkjUu0yKGX9rbxenDI\n" \
-"U5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUs\n" \
-"N+gDS63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vv\n" \
-"o/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU\n" \
-"5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpy\n" \
-"rqXRfboQnoZsG4q5WTP468SQvvG5\n" \
+const char* awsEndpoint = "a2xcttado1dq90-ats.iot.eu-central-1.amazonaws.com";
+
+// Update the two certificate strings below. Paste in the text of your AWS 
+// device certificate and private key. Add a quote character at the start
+// of each line and a backslash, n, quote, space, backslash at the end 
+// of each line:
+
+// xxxxxxxxxx-certificate.pem.crt
+const char* certificate_pem_crt = \
+
+"-----BEGIN CERTIFICATE-----\n" \
+"MIIDWTCCAkGgAwIBAgIUQcpZkB/1jwu8iFuzrh03PVoWJ3YwDQYJKoZIhvcNAQEL\n" \
+"BQAwTTFLMEkGA1UECwxCQW1hem9uIFdlYiBTZXJ2aWNlcyBPPUFtYXpvbi5jb20g\n" \
+"SW5jLiBMPVNlYXR0bGUgU1Q9V2FzaGluZ3RvbiBDPVVTMB4XDTIwMDMwNDE3Mzcz\n" \
+"N1oXDTQ5MTIzMTIzNTk1OVowHjEcMBoGA1UEAwwTQVdTIElvVCBDZXJ0aWZpY2F0\n" \
+"ZTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANSSTj9Nresozpw4rMla\n" \
+"1Rg3DaIFguUWQtdxSMzuwaPE5/yjnmLh6pYViHk4nzVBXGNo+R6Ul7rjCAnXbVTT\n" \
+"rAozbvzpytPYab3ib4DS2W1vg38UgRMOgD7UYMuEjHj4brIDmmgUo1JG4AHX5Gwa\n" \
+"p62gVGtYEQ1ZDS6nFSHdZIF1wr9Kh+dCxJWTFUgVQFKJ010Fb9zo7w2zul6oNxR6\n" \
+"TgVL3Moyr8CAPhzGIKLXtEDLQA96pf4Emou7gAATvUUDnJXY+QgQovf8a9ztOAGP\n" \
+"HFHMaLBk9f/AgLC9k2rC3dd5mtcVSDDEzKSUU/i9OppF86zqQsRxVy6BcT1+a20/\n" \
+"TLECAwEAAaNgMF4wHwYDVR0jBBgwFoAUw90NXB0drBTrI6Gq4gawCxCCgAUwHQYD\n" \
+"VR0OBBYEFIRqt+7KTUfsmSHCe54g07y26g/kMAwGA1UdEwEB/wQCMAAwDgYDVR0P\n" \
+"AQH/BAQDAgeAMA0GCSqGSIb3DQEBCwUAA4IBAQDHs9KBfRsJUW2TwYITx//r8Qrh\n" \
+"rxwC+bfLxU7OnHksXsaxxzAVXqdB/7mTjVTMm0RrO7ESnV/6NI5H9rSNKykx8C+i\n" \
+"x6vDFLAP4M+Zbqjn3cMPkn5WJUVHKBXVL9DI2dfjtmNHHrjDrPJ3IyQDi9lRThLg\n" \
+"cuOzoqQM7U5nMUnXkCIaWn4MQol310bC3hQiR2+RIr7J7zSbNVSdJfHeNWPBZ8yX\n" \
+"p06+T3OgdiejbNj/sy6vunIsUsJojQUM33MXz33Z/VECgb9MhXLXD4KeEWTWs/XD\n" \
+"nTCuatVpoBZrN6q5wLaJjA/Fj3nwH0+iTA8/hv7w2FZWQx78CjcUQIumvFD2\n" \
 "-----END CERTIFICATE-----\n";
 
-// The private key for your device
-const char AWS_CERT_PRIVATE[] = "-----BEGIN RSA PRIVATE KEY-----\n" \
+// xxxxxxxxxx-private.pem.key
+const char* private_pem_key = \
+
+"-----BEGIN RSA PRIVATE KEY-----\n" \
 "MIIEowIBAAKCAQEA1JJOP02t6yjOnDisyVrVGDcNogWC5RZC13FIzO7Bo8Tn/KOe\n" \
 "YuHqlhWIeTifNUFcY2j5HpSXuuMICddtVNOsCjNu/OnK09hpveJvgNLZbW+DfxSB\n" \
 "Ew6APtRgy4SMePhusgOaaBSjUkbgAdfkbBqnraBUa1gRDVkNLqcVId1kgXXCv0qH\n" \
@@ -58,158 +73,115 @@ const char AWS_CERT_PRIVATE[] = "-----BEGIN RSA PRIVATE KEY-----\n" \
 "YMYLNyJcX2F5Mwyzq7CjE+C4pLbOoJHgSanE5DT17qOEtuAb0XzW\n" \
 "-----END RSA PRIVATE KEY-----\n";
 
-// The certificate for your device
-const char AWS_CERT_CRT[] = "-----BEGIN CERTIFICATE-----\n" \
-"MIIDWTCCAkGgAwIBAgIUQcpZkB/1jwu8iFuzrh03PVoWJ3YwDQYJKoZIhvcNAQEL\n" \
-"BQAwTTFLMEkGA1UECwxCQW1hem9uIFdlYiBTZXJ2aWNlcyBPPUFtYXpvbi5jb20g\n" \
-"SW5jLiBMPVNlYXR0bGUgU1Q9V2FzaGluZ3RvbiBDPVVTMB4XDTIwMDMwNDE3Mzcz\n" \
-"N1oXDTQ5MTIzMTIzNTk1OVowHjEcMBoGA1UEAwwTQVdTIElvVCBDZXJ0aWZpY2F0\n" \
-"ZTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANSSTj9Nresozpw4rMla\n" \
-"1Rg3DaIFguUWQtdxSMzuwaPE5/yjnmLh6pYViHk4nzVBXGNo+R6Ul7rjCAnXbVTT\n" \
-"rAozbvzpytPYab3ib4DS2W1vg38UgRMOgD7UYMuEjHj4brIDmmgUo1JG4AHX5Gwa\n" \
-"p62gVGtYEQ1ZDS6nFSHdZIF1wr9Kh+dCxJWTFUgVQFKJ010Fb9zo7w2zul6oNxR6\n" \
-"TgVL3Moyr8CAPhzGIKLXtEDLQA96pf4Emou7gAATvUUDnJXY+QgQovf8a9ztOAGP\n" \
-"HFHMaLBk9f/AgLC9k2rC3dd5mtcVSDDEzKSUU/i9OppF86zqQsRxVy6BcT1+a20/\n" \
-"TLECAwEAAaNgMF4wHwYDVR0jBBgwFoAUw90NXB0drBTrI6Gq4gawCxCCgAUwHQYD\n" \
-"VR0OBBYEFIRqt+7KTUfsmSHCe54g07y26g/kMAwGA1UdEwEB/wQCMAAwDgYDVR0P\n" \
-"AQH/BAQDAgeAMA0GCSqGSIb3DQEBCwUAA4IBAQDHs9KBfRsJUW2TwYITx//r8Qrh\n" \
-"rxwC+bfLxU7OnHksXsaxxzAVXqdB/7mTjVTMm0RrO7ESnV/6NI5H9rSNKykx8C+i\n" \
-"x6vDFLAP4M+Zbqjn3cMPkn5WJUVHKBXVL9DI2dfjtmNHHrjDrPJ3IyQDi9lRThLg\n" \
-"cuOzoqQM7U5nMUnXkCIaWn4MQol310bC3hQiR2+RIr7J7zSbNVSdJfHeNWPBZ8yX\n" \
-"p06+T3OgdiejbNj/sy6vunIsUsJojQUM33MXz33Z/VECgb9MhXLXD4KeEWTWs/XD\n" \
-"nTCuatVpoBZrN6q5wLaJjA/Fj3nwH0+iTA8/hv7w2FZWQx78CjcUQIumvFD2\n" \
+/* root CA can be downloaded in:
+  https://www.symantec.com/content/en/us/enterprise/verisign/roots/VeriSign-Class%203-Public-Primary-Certification-Authority-G5.pem
+*/
+const char* rootCA = \
+"-----BEGIN CERTIFICATE-----\n" \
+"MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF\n" \
+"ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6\n" \
+"b24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTEL\n" \
+"MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv\n" \
+"b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj\n" \
+"ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM\n" \
+"9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw\n" \
+"IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6\n" \
+"VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L\n" \
+"93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm\n" \
+"jgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC\n" \
+"AYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUA\n" \
+"A4IBAQCY8jdaQZChGsV2USggNiMOruYou6r4lK5IpDB/G/wkjUu0yKGX9rbxenDI\n" \
+"U5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUs\n" \
+"N+gDS63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vv\n" \
+"o/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU\n" \
+"5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpy\n" \
+"rqXRfboQnoZsG4q5WTP468SQvvG5\n" \
 "-----END CERTIFICATE-----\n";
 
-#endif
+WiFiClientSecure wiFiClient;
+void msgReceived(char* topic, byte* payload, unsigned int len);
+PubSubClient pubSubClient(awsEndpoint, 8883, msgReceived, wiFiClient); 
 
-WiFiClientSecure net = WiFiClientSecure();
-MQTTClient client = MQTTClient();
+void setup() {
+  Serial.begin(115200); delay(50); Serial.println();
+  Serial.println("ESP32 AWS IoT Example");
+  Serial.printf("SDK version: %s\n", ESP.getSdkVersion());
 
-// Wifi credentials
-const char *WIFI_SSID = "UPC9599591";
-const char *WIFI_PASSWORD = "8fznhRjhU2wf";
+  Serial.print("Connecting to "); Serial.print(ssid);
+  WiFi.begin(ssid, password);
+  WiFi.waitForConnectResult();
+  Serial.print(", WiFi connected, IP address: "); Serial.println(WiFi.localIP());
 
-void setup(void) {
-{ 
-  Serial.begin(9600);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.println("Wifi connected");
-  connectToAWS();
-
-  // Only try 15 times to connect to the WiFi
-  int retries = 0;
-  while (WiFi.status() != WL_CONNECTED && retries < 15){
-    delay(500);
-    Serial.print(".");
-    retries++;
-  }
-
+  wiFiClient.setCACert(rootCA);
+  wiFiClient.setCertificate(certificate_pem_crt);
+  wiFiClient.setPrivateKey(private_pem_key);
 }
 
-// The name of the device. This MUST match up with the name defined in the AWS console
-#define DEVICE_NAME "Temp-Sensor1"
+unsigned long lastPublish;
+int msgCount;
 
-// The MQTTT endpoint for the device (unique for each AWS account but shared amongst devices within the account)
-#define AWS_IOT_ENDPOINT "a2xcttado1dq90-ats.iot.eu-central-1.amazonaws.com"
-
-// The MQTT topic that this device should publish to
-#define AWS_IOT_TOPIC "$aws/things/Temp-Sensor1/shadow/update"
-
-// How many times we should attempt to connect to AWS
-#define AWS_MAX_RECONNECT_TRIES 50
- 
-}
-
-void connectToAWS()
-{
-  // Configure WiFiClientSecure to use the AWS certificates we generated
-  net.setCACert(AWS_CERT_CA);
-  net.setCertificate(AWS_CERT_CRT);
-  net.setPrivateKey(AWS_CERT_PRIVATE);
-
-  // Connect to the MQTT broker on the AWS endpoint we defined earlier
-  client.begin(AWS_IOT_ENDPOINT, 8883, net);
-
-  // Try to connect to AWS and count how many times we retried.
-  int retries = 0;
-  Serial.print("Connecting to AWS IOT");
-
-  while (!client.connect(DEVICE_NAME) && retries < AWS_MAX_RECONNECT_TRIES) {
-    Serial.print(".");
-    delay(100);
-    retries++;
-  }
-
-  // Make sure that we did indeed successfully connect to the MQTT broker
-  // If not we just end the function and wait for the next loop.
-  if(!client.connected()){
-    Serial.println(" Timeout!");
-    return;
-  }
-
-  // If we land here, we have successfully connected to AWS!
-  // And we can subscribe to topics and send messages.
-  Serial.println("Connected to AWS!");
-}
-
-int sensorPin = 33; // Hier wird der Eingangs-Pin deklariert
+int sensorPin = T2; // Hier wird der Eingangs-Pin deklariert
 
 // Diese Funktion übersetzt den aufgenommenen analogen Messwert
 // in die entsprechende Temperatur in °C und gibt diesen aus
 double Thermistor(int RawADC)
 {
-	int Temp;
+  int Temp;
   
-	Temp = log(10000.0 * ((1024.0 / RawADC - 1)));
-	Temp = 1 / (0.001129148 + (0.000234125 + (0.0000000876741 * Temp * Temp )) * Temp );
-	Temp = Temp - 273.15;            // Konvertierung von Kelvin in Celsius
-	return Temp;
+  Temp = log(10000.0 * ((1024.0 / RawADC - 1)));
+  Temp = 1 / (0.001129148 + (0.000234125 + (0.0000000876741 * Temp * Temp )) * Temp );
+  Temp = Temp - 273.15;            // Konvertierung von Kelvin in Celsius
+  return Temp;
 }
 
 // Das Programm misst den aktuellen Spannungswert am NTC
 // und übersetzt das Ergebnis in °C für die serielle Ausgabe
 
-void loop()
-{
+void loop() {
+
+
   int readVal = analogRead(sensorPin);
   double temp =  Thermistor(readVal);
-  
-  
+  pubSubCheckConnect();
 
-  // Ausgabe auf die serielle Schnittstelle
-  Serial.print("Aktuelle Temperatur ist:");
-  Serial.println(int(Thermistor(analogRead(0))));  
-        Serial.print(char(186)); //Ausgabe <°> Symbol
-  Serial.println("C");
-  Serial.println("---------------------------------------");
+   char fakeData[100];
+//choose your own number of variables and data types, but avoid data buffer overload
 
-  delay(500);
+  float var1 = temp; //fake number range, adjust as you like
 
-sendJsonToAWS();
-  client.loop();
-  delay(1000);
+  sprintf(fakeData,  "{\"uptime\":%lu,\"temp\":%f}", millis() / 1000, var1);
 
 
+  if (millis() - lastPublish > 10000) {
+  //String msg = String("Hello from ESP32: ") + ++msgCount;
+  // boolean rc = pubSubClient.publish("outTopic", msg.c_str());
+  boolean rc = pubSubClient.publish("Temp-Sensor1", fakeData);
+    Serial.print("Published, rc="); Serial.print( (rc ? "OK: " : "FAILED: ") );
+    Serial.println(fakeData);
+    lastPublish = millis();
+
+    
+  }
 }
 
+void msgReceived(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message received on "); Serial.print(topic); Serial.print(": ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
 
-void sendJsonToAWS()
-{
-  StaticJsonDocument<512> jsonDoc;
-  JsonObject stateObj = jsonDoc.createNestedObject("state");
-  JsonObject reportedObj = stateObj.createNestedObject("reported");
-  
-  // Write the temperature & humidity. Here you can use any C++ type (and you can refer to variables)
-  
-  reportedObj["temperature"] = ("temp");
-  
-
-
-  Serial.println("Publishing message to AWS...");
-  //serializeJson(doc, Serial);
-  char jsonBuffer[512];
-  serializeJson(jsonDoc, jsonBuffer);
-
-  client.publish("Temp-Sensor1", jsonBuffer);
+void pubSubCheckConnect() {
+  if ( ! pubSubClient.connected()) {
+    Serial.print("PubSubClient connecting to: "); Serial.print(awsEndpoint);
+    while ( ! pubSubClient.connected()) {
+      Serial.print(".");
+      pubSubClient.connect("ESPthingXXXX");
+      delay(1000);
+    }
+    Serial.println(" connected");
+    pubSubClient.subscribe("inTopic");
+  }
+  pubSubClient.loop();
 }
